@@ -4,7 +4,6 @@ import random
 # Clase para un nodo de un grafo que describe operaciones matemáticas y que es capaz de hacer derivadas parciales.
 
 class Node:
-
     def __init__(self, data, _children=(), _op='', label=''):
 
         # Valor numérico del nodo
@@ -45,18 +44,11 @@ class Node:
         out = Node(total, (self, other), '+')
         return out
     
-    def __truediv__(self, other):
-        out = Node(self.data / other.data, (self, other), '/')
-        return out
 
     # Funciones de activación que pueden aplicarse a un nodo.
 
     def tanh(self):
         x = self.data
-        if x > 100:
-            x = 100
-        elif x < -100:
-            x = -100
         t = (math.exp(2*x) - 1) / (math.exp(2*x) + 1)
         out = Node(t, (self, ), 'TanH')
         return out
@@ -68,58 +60,49 @@ class Node:
         return out
     
 
-
-
+    # Derivadas para cada operación, con recursión para recorrer el grafo hacia atrás
 
     def backward(self):
         self.grad = 1
-
-            # Crear lista topológicamente ordenada
-        topo = []
-        visited = set()
-        
-        def build_topo(v):
-            if v not in visited:
-                visited.add(v)
-                for child in v._prev:
-                    build_topo(child)
-                topo.append(v)
-        
-        # Construir orden topológico
-        build_topo(self)
-
-        for node in reversed(topo):
+        def recurse(node):
+            if not node._prev:
+                return
+            
             if node._op == '+':
                 for n in node._prev:
                     n.grad += 1.0 * node.grad
+                    recurse(n)
 
-            elif node._op == '-':
+            if node._op == '-':
                 node._prev[0].grad += 1.0 * node.grad
+                recurse(node._prev[0])
                 node._prev[1].grad += -1.0 * node.grad
+                recurse(node._prev[1])
 
-            elif node._op == '*':
+            if node._op == '*':
                 node._prev[0].grad += node._prev[1].data * node.grad
+                recurse(node._prev[0])
                 node._prev[1].grad += node._prev[0].data * node.grad
+                recurse(node._prev[1])
             
-            elif node._op == '**':
+            if node._op == '**':
                 exp = node._prev[1].data
                 node._prev[0].grad += exp * (node._prev[0].data ** (exp - 1)) * node.grad
+                recurse(node._prev[0])
                 # recurse(node._prev[1])
 
-            elif node._op == 'TanH':
+            if node._op == 'TanH':
                 node._prev[0].grad += (1 - node.data**2) * node.grad
-                # self._prev[0].recurse()
+                recurse(node._prev[0])
 
-            elif node._op == 'RelU':
+            if node._op == 'RelU':
                 if node.data > 0:
                     node._prev[0].grad += 1 * node.grad
                 else:
                     node._prev[0].grad += 0
-                # node._prev[0].recurse()
-            
-            elif node._op == '/':
-                node._prev[0].grad += (1/ node._prev[1].data) * node.grad
-                node._prev[1].grad += ((-node._prev[0].data) / (node._prev[1].data**2))* node.grad 
+                recurse(node._prev[0])
+                      
+        recurse(self)
 
 
 
@@ -239,30 +222,18 @@ def predict(network, xs):
 
 ypred = predict(n, xs)
 
-print('Iniciando entrenamiento de prueba para comprobar que el modelo se puede entrenar. Los valores finales deben ser 1, -1, -1, 1')
 print( 'predicciones iniciales: ', ypred )
 
-def train(network, xs, ys, epochs=1000, learning_rate=0.01, printability=500):
-    for i in range(epochs):
+def train(network, xs, ys, epochs=1000, learning_rate=0.01):
+    for i in range(2000):
 
         # Fordward
         ypred = predict(network, xs)
         # Calculo de la pérdida con el error cuadrático.
         loss = Node(0.0)
         for yt, yout in zip(ys, ypred):
-            
-            # Convert single values to list
-            if isinstance(yt, (int, float)):
-                yt = [yt]
-            
-            # Ensure prediction is in correct format
-            if not isinstance(yout, list):
-                yout = [yout]
+            loss += (yout - Node(yt))**Node(2)
 
-            for target, pred in zip(yt, yout):
-                loss += (pred - Node(target))**Node(2)
-                
-        loss = loss * Node(1/len(ys))
         # Backward 
         # Backpropagation calculando el gradiente de la función de pérdida respecto a cada parámetro.
         loss.backward()
@@ -272,7 +243,7 @@ def train(network, xs, ys, epochs=1000, learning_rate=0.01, printability=500):
             parameter.data += -learning_rate * parameter.grad
             parameter.grad = 0.0
         
-        if i % printability == 0:
+        if i % 100 == 0:
             print(f"Epoch {i}, loss: {loss.data}")
 
     
@@ -282,139 +253,15 @@ train(n, xs, ys, epochs=2000, learning_rate=0.05)
 print('predicciones finales: ', predict(n, xs))
 
 
-
+import sys
+sys.setrecursionlimit(100000)
 
 import pandas as pd
 df = pd.read_csv('StressLevelDataset.csv')
 df.head()
 
-
 y = df[['stress_level']]
 x = df[['self_esteem', 'sleep_quality', 'depression']]
 
-# x = df[['anxiety_level', 'self_esteem', 'depression', 'headache', 'blood_pressure', 'sleep_quality', 'breathing_problem', 'noise_level', 'living_conditions', 'safety', 'basic_needs', 'academic_performance', 'study_load', 'teacher_student_relationship', 'future_career_concerns', 'social_support', 'peer_pressure', 'extracurricular_activities', 'bullying']]
 
-
-y = y-1 # Normalizar el estres de -1 a 1
-
-
-import numpy as np
-
-Xtrain = np.array(x[:-100])
-Xtest = np.array(x[-100:])
-
-Ytrain = np.array(y[:-100])
-Ytest = np.array(y[-100:])
-
-X_train_list = Xtrain.tolist()
-Y_train_list = Ytrain.tolist()
-
-Y_test_list = Ytest.tolist()
-X_test_list = Xtest.tolist()
-
-
-import sys
-sys.setrecursionlimit(100000) # Aumentar el límete de recursión para evitar errores al hacer backpropagation en redes grandes.
-
-
-
-
-stress_predictor = NN(3, [5, 5, 1])
-# stress_predictor(X_test_list[7])
-
-
-
-
-
-print('\n\n\nIniciando entrenamiento real sobre el dataset de estrés hasta 200 iteraciones, puede tomar un tiempo... \n')
-
-train(stress_predictor, X_train_list, Y_train_list, epochs=200, learning_rate=0.01, printability=10) # Printability es cada cuantas iteraciones se imprime el error actual.
-
-
-import matplotlib.pyplot as plt
-
-
-
-# Obtener resultados de train
-
-y_pred_train = []
-for x in X_train_list:
-    pred = stress_predictor(x)
-    # Convertir Node a valor float
-    if isinstance(pred, list):
-        y_pred_train.append([p.data for p in pred])
-    else:
-        y_pred_train.append(pred.data)
-
-# Convertir predicciones y valores reales a arrays numpy
-y_pred_train = np.array(y_pred_train)
-y_true = np.array([yt[0] for yt in Y_train_list])  # Extraer valores de las listas
-
-
-# Crear índices ordenados basados en los valores reales
-indices_ordenados = np.argsort(y_true)
-
-# Reordenar tanto los valores reales como las predicciones
-y_true_ordenado = y_true[indices_ordenados]
-y_pred_train_ordenado = y_pred_train[indices_ordenados]
-
-
-
-
-# Obtener resultados de test
-
-y_pred_test = []
-for x in X_test_list:
-    pred = stress_predictor(x)
-    # Convertir Node a valor float
-    if isinstance(pred, list):
-        y_pred_test.append([p.data for p in pred])
-    else:
-        y_pred_test.append(pred.data)
-
-# Convertir predicciones y valores reales a arrays numpy
-y_pred_test = np.array(y_pred_test)
-y_true_test = np.array([yt[0] for yt in Y_test_list])  # Extraer valores de las listas
-
-# Crear índices ordenados basados en los valores reales
-indices_ordenados = np.argsort(y_true_test)
-
-# Reordenar tanto los valores reales como las predicciones
-y_true__test_ordenado = y_true_test[indices_ordenados]
-y_pred_test_ordenado = y_pred_test[indices_ordenados]
-
-
-
-
-# Crear una figura con dos subplots
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 6))
-
-# Primera gráfica (datos de entrenamiento)
-ax1.scatter(range(len(y_true_ordenado)), y_true_ordenado, c='blue', label='Valor Real', alpha=0.5)
-ax1.scatter(range(len(y_pred_train_ordenado)), y_pred_train_ordenado, c='red', label='Predicción', alpha=0.5)
-ax1.set_xlabel('Índice de Muestra')
-ax1.set_ylabel('Nivel de Estrés')
-ax1.set_title('Comparación con datos de entrenamiento')
-ax1.legend()
-ax1.grid(True, alpha=0.3)
-
-# Segunda gráfica (datos de prueba)
-ax2.scatter(range(len(y_true__test_ordenado)), y_true__test_ordenado, c='blue', label='Valor Real', alpha=0.5)
-ax2.scatter(range(len(y_pred_test_ordenado)), y_pred_test_ordenado, c='red', label='Predicción', alpha=0.5)
-ax2.set_xlabel('Índice de Muestra')
-ax2.set_ylabel('Nivel de Estrés')
-ax2.set_title('Comparación con datos de prueba')
-ax2.legend()
-ax2.grid(True, alpha=0.3)
-
-# Ajustar el espacio entre subplots
-plt.tight_layout()
-
-# Mostrar la figura
-plt.show()
-
-# Imprimir métricas de error
-mse_train = np.mean((y_true - y_pred_train)**2)
-mse_test = np.mean((y_true_test - y_pred_test)**2)
-print(f"Error cuadrático medio (entrenamiento): {mse_train:.4f}")
-print(f"Error cuadrático medio (prueba): {mse_test:.4f}")
+print(y)
