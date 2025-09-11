@@ -51,7 +51,7 @@ class Node:
 
     # Funciones de activación que pueden aplicarse a un nodo.
 
-    def tanh(self):
+    def TanH(self):
         x = self.data
         if x > 100:
             x = 100
@@ -63,12 +63,19 @@ class Node:
     
     def RelU(self):
         x = self.data
-        r = max(0, x)
+        alpha = 0.01 # Leaky RelU
+        r = max(alpha * x, x)
         out = Node(r, (self, ), 'RelU')
         return out
     
 
-
+    def Softmax(self, others):
+        # max_val = max(n.data for n in [self] + others)
+        exps = [math.exp(n.data) for n in [self] + others]
+        sum_exp = sum(exps)
+        softmax_val = exps[0] / sum_exp
+        out = Node(softmax_val, ([self] + others), 'Softmax')
+        return out
 
 
     def backward(self):
@@ -114,25 +121,41 @@ class Node:
                 if node.data > 0:
                     node._prev[0].grad += 1 * node.grad
                 else:
-                    node._prev[0].grad += 0
+                    node._prev[0].grad += 0.01 * node.grad
                 # node._prev[0].recurse()
             
             elif node._op == '/':
                 node._prev[0].grad += (1/ node._prev[1].data) * node.grad
                 node._prev[1].grad += ((-node._prev[0].data) / (node._prev[1].data**2))* node.grad 
 
+            elif node._op == 'Softmax':
+                softmax_out = node.data
+                for i, n in enumerate(node._prev):
+                    if i == 0:
+                        n.grad += softmax_out * (1 - softmax_out) * node.grad
+                    else:
+                        n.grad += -softmax_out * n.data * node.grad
+
 
 
 # Clase para una neurona de la red neuronal. Usa nodos para representar las operaciones matemáticas que describen la neurona (pesos, bias, suma ponderada, función de activación).
 
 class Neuron:
-    def __init__(self, inputs):
+    def __init__(self, inputs, activation):
         # Lista de pesos (uno por cada entrada)
         self.w = []
-        for _ in range(inputs):
-            self.w.append(Node(random.uniform(-1, 1)))
+            # Inicialización He para ReLU
+        if activation == 'RelU':
+            scale = math.sqrt(2.0/inputs)
+            for _ in range(inputs):
+                self.w.append(Node(random.uniform(-scale, scale)))
+        elif activation == 'TanH':
+            for _ in range(inputs):
+                self.w.append(Node(random.uniform(-1, 1)))
         # Bias
         self.b = Node(random.uniform(-1,1))
+
+        self.activation = activation
 
         # print(self.w, self.b)
 
@@ -155,7 +178,10 @@ class Neuron:
             activation = wi * xi
             total = total + activation
         # Normaliza la activación de la neurona
-        output = total.tanh()
+        if self.activation == 'TanH':
+            output = total.TanH()
+        elif self.activation == 'RelU':
+            output = total.RelU()
 
         # out = activation.tanh()
         return output
@@ -165,11 +191,11 @@ class Neuron:
 # Clase para una capa de la red neuronal compuesta de varias neuronas. Está completamente conectada a la capa anterior.
 
 class Layer:
-    def __init__(self, inputs, outputs):
+    def __init__(self, inputs, outputs, activation):
         # Crea una lista de neuronas correspondiendo con el número de salidas de esa capa. Cada neurona está conectada a todas las entradas.
         self.neurons = []
         for _ in range(outputs):
-            self.neurons.append(Neuron(inputs))
+            self.neurons.append(Neuron(inputs, activation))
     
     # Al llamar la capa con una lista de entradas regresa la salida de cada neurona.
     def __call__(self, x):
@@ -192,14 +218,14 @@ class Layer:
 # Clase para una red neuronal densa. 
 
 class NN:
-    def __init__(self, inputs, layers):
+    def __init__(self, inputs, layers, activation):
         # Crear una lista con el número de valores por capa incluyendo la entrada para poder crear las capas con el número de entradas y de neuronas correcto. 
         inout = [inputs] + layers 
         self.layers = []
 
         # Crea capas que tienen el número de entradas = al número de salidas de la capa anterior.
         for i in range(len(layers)):
-            self.layers.append(Layer(inout[i], inout[i+1]))
+            self.layers.append(Layer(inout[i], inout[i+1], activation))
     
     # Al llamar la red neuronal con una lista de entradas regresa la salida de la última capa. Se llama de forma iterativa para ir actualizando los valores desde la primera capa.
     def __call__(self, x):
@@ -220,7 +246,7 @@ class NN:
 
 
 # Red neuronal con 3 entradas, 2 capas de 4 neuronas y 1 neurona de salida.
-n = NN(3, [4,4,1])
+n = NN(3, [4,4,1], 'RelU')
 
 # Entradas de ejemplo
 xs = [[2.0, 3.0, -1.0],
@@ -229,7 +255,7 @@ xs = [[2.0, 3.0, -1.0],
       [1.0, 1.0, -1.0]]
 
 # salidas de ejemplo
-ys = [1.0, -1.0, -1.0, 1.0]
+ys = [1.0, 0.0, 0.0, 1.0]
 
 def predict(network, xs):
     prediction = []
@@ -242,7 +268,7 @@ ypred = predict(n, xs)
 print('Iniciando entrenamiento de prueba para comprobar que el modelo se puede entrenar. Los valores finales deben ser 1, -1, -1, 1')
 print( 'predicciones iniciales: ', ypred )
 
-def train(network, xs, ys, epochs=1000, learning_rate=0.01, printability=500):
+def train(network, xs, ys, epochs=1000, learning_rate=0.001, printability=500):
     for i in range(epochs):
 
         # Fordward
@@ -277,7 +303,7 @@ def train(network, xs, ys, epochs=1000, learning_rate=0.01, printability=500):
 
     
 
-train(n, xs, ys, epochs=2000, learning_rate=0.05)
+train(n, xs, ys, epochs=2000, learning_rate=0.001)
 
 print('predicciones finales: ', predict(n, xs))
 
@@ -295,13 +321,34 @@ x = df[['self_esteem', 'sleep_quality', 'depression']]
 # x = df[['anxiety_level', 'self_esteem', 'depression', 'headache', 'blood_pressure', 'sleep_quality', 'breathing_problem', 'noise_level', 'living_conditions', 'safety', 'basic_needs', 'academic_performance', 'study_load', 'teacher_student_relationship', 'future_career_concerns', 'social_support', 'peer_pressure', 'extracurricular_activities', 'bullying']]
 
 
-y = y-1 # Normalizar el estres de -1 a 1
+y = y/2 # Normalizar el estres de -1 a 1
 
 
 import numpy as np
 
-Xtrain = np.array(x[:-100])
-Xtest = np.array(x[-100:])
+
+def normalize_data(data):
+    # Calcular min y max para cada columna
+    min_vals = np.min(data, axis=0)
+    max_vals = np.max(data, axis=0)
+    
+    # Evitar división por cero y agregar pequeño epsilon
+    range_vals = max_vals - min_vals
+    epsilon = 1e-8
+    range_vals = np.where(range_vals < epsilon, epsilon, range_vals)
+    
+    # Normalizar a rango [-0.9, 0.9] para evitar saturación
+    normalized = -0.9 + 1.8 * (data - min_vals) / range_vals
+    return normalized
+
+x_normalized = normalize_data(np.array(x))
+
+
+# Xtrain = np.array(x[:-100])
+# Xtest = np.array(x[-100:])
+
+Xtrain = x_normalized[:-100]
+Xtest = x_normalized[-100:]
 
 Ytrain = np.array(y[:-100])
 Ytest = np.array(y[-100:])
@@ -319,7 +366,7 @@ sys.setrecursionlimit(100000) # Aumentar el límete de recursión para evitar er
 
 
 
-stress_predictor = NN(3, [5, 5, 1])
+stress_predictor = NN(3, [12, 8, 4, 1], 'RelU')
 # stress_predictor(X_test_list[7])
 
 
@@ -328,7 +375,7 @@ stress_predictor = NN(3, [5, 5, 1])
 
 print('\n\n\nIniciando entrenamiento real sobre el dataset de estrés hasta 200 iteraciones, puede tomar un tiempo... \n')
 
-train(stress_predictor, X_train_list, Y_train_list, epochs=200, learning_rate=0.01, printability=10) # Printability es cada cuantas iteraciones se imprime el error actual.
+train(stress_predictor, X_train_list, Y_train_list, epochs=200, learning_rate=0.001, printability=10) # Printability es cada cuantas iteraciones se imprime el error actual.
 
 
 import matplotlib.pyplot as plt
