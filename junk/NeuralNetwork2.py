@@ -22,7 +22,7 @@ class Node:
     # Sobrecarga de operadores para poder hacer operaciones entre nodos.
 
     def __repr__(self):
-        return f"Node(data={self.data})"#, children={self._prev})"
+        return f"Node(data={self.data})" #, children={self._prev})"
     
     def __add__(self, other):
         out = Node(self.data + other.data, (self, other), '+')
@@ -51,7 +51,7 @@ class Node:
 
     # Funciones de activación que pueden aplicarse a un nodo.
 
-    def tanh(self):
+    def TanH(self):
         x = self.data
         if x > 100:
             x = 100
@@ -63,12 +63,19 @@ class Node:
     
     def RelU(self):
         x = self.data
-        r = max(0.01*x, x)
+        alpha = 0.01 # Leaky RelU
+        r = max(alpha * x, x)
         out = Node(r, (self, ), 'RelU')
         return out
     
 
-
+    def Softmax(self, others):
+        # max_val = max(n.data for n in [self] + others)
+        exps = [math.exp(n.data) for n in [self] + others]
+        sum_exp = sum(exps)
+        softmax_val = exps[0] / sum_exp
+        out = Node(softmax_val, ([self] + others), 'Softmax')
+        return out
 
 
     def backward(self):
@@ -114,12 +121,20 @@ class Node:
                 if node.data > 0:
                     node._prev[0].grad += 1 * node.grad
                 else:
-                    node._prev[0].grad += 0.01*node.grad
+                    node._prev[0].grad += 0.01 * node.grad
                 # node._prev[0].recurse()
             
             elif node._op == '/':
                 node._prev[0].grad += (1/ node._prev[1].data) * node.grad
                 node._prev[1].grad += ((-node._prev[0].data) / (node._prev[1].data**2))* node.grad 
+
+            elif node._op == 'Softmax':
+                softmax_out = node.data
+                for i, n in enumerate(node._prev):
+                    if i == 0:
+                        n.grad += softmax_out * (1 - softmax_out) * node.grad
+                    else:
+                        n.grad += -softmax_out * n.data * node.grad
 
 
 
@@ -127,13 +142,20 @@ class Node:
 
 class Neuron:
     def __init__(self, inputs, activation):
-        # Lista de pesos (uno por cada entrada) 
-        self.activation = activation
+        # Lista de pesos (uno por cada entrada)
         self.w = []
-        for _ in range(inputs):
-            self.w.append(Node(random.uniform(-1, 1)))
+            # Inicialización He para ReLU
+        if activation == 'RelU':
+            scale = math.sqrt(2.0/inputs)
+            for _ in range(inputs):
+                self.w.append(Node(random.uniform(-scale, scale)))
+        elif activation == 'TanH':
+            for _ in range(inputs):
+                self.w.append(Node(random.uniform(-1, 1)))
         # Bias
         self.b = Node(random.uniform(-1,1))
+
+        self.activation = activation
 
         # print(self.w, self.b)
 
@@ -157,11 +179,9 @@ class Neuron:
             total = total + activation
         # Normaliza la activación de la neurona
         if self.activation == 'TanH':
-            output = total.tanh()
-        elif self.activation == 'ReLU':
+            output = total.TanH()
+        elif self.activation == 'RelU':
             output = total.RelU()
-        else:
-            output = total
 
         # out = activation.tanh()
         return output
@@ -198,14 +218,14 @@ class Layer:
 # Clase para una red neuronal densa. 
 
 class NN:
-    def __init__(self, inputs, layers, activations):
+    def __init__(self, inputs, layers, activation):
         # Crear una lista con el número de valores por capa incluyendo la entrada para poder crear las capas con el número de entradas y de neuronas correcto. 
         inout = [inputs] + layers 
         self.layers = []
 
         # Crea capas que tienen el número de entradas = al número de salidas de la capa anterior.
         for i in range(len(layers)):
-            self.layers.append(Layer(inout[i], inout[i+1], activations[i]))
+            self.layers.append(Layer(inout[i], inout[i+1], activation))
     
     # Al llamar la red neuronal con una lista de entradas regresa la salida de la última capa. Se llama de forma iterativa para ir actualizando los valores desde la primera capa.
     def __call__(self, x):
@@ -226,7 +246,7 @@ class NN:
 
 
 # Red neuronal con 3 entradas, 2 capas de 4 neuronas y 1 neurona de salida.
-n = NN(3, [4,4,1], ['ReLU', 'ReLU', 'TanH'])
+n = NN(3, [4,4,1], 'RelU')
 
 # Entradas de ejemplo
 xs = [[2.0, 3.0, -1.0],
@@ -235,7 +255,7 @@ xs = [[2.0, 3.0, -1.0],
       [1.0, 1.0, -1.0]]
 
 # salidas de ejemplo
-ys = [1.0, -1.0, -1.0, 1.0]
+ys = [1.0, 0.0, 0.0, 1.0]
 
 def predict(network, xs):
     prediction = []
@@ -248,7 +268,7 @@ ypred = predict(n, xs)
 print('Iniciando entrenamiento de prueba para comprobar que el modelo se puede entrenar. Los valores finales deben ser 1, -1, -1, 1')
 print( 'predicciones iniciales: ', ypred )
 
-def train(network, xs, ys, epochs=1000, learning_rate=0.01, printability=500):
+def train(network, xs, ys, epochs=1000, learning_rate=0.001, printability=500):
     for i in range(epochs):
 
         # Fordward
@@ -283,7 +303,7 @@ def train(network, xs, ys, epochs=1000, learning_rate=0.01, printability=500):
 
     
 
-train(n, xs, ys, epochs=2000, learning_rate=0.05)
+train(n, xs, ys, epochs=2000, learning_rate=0.001)
 
 print('predicciones finales: ', predict(n, xs))
 
@@ -292,33 +312,43 @@ print('predicciones finales: ', predict(n, xs))
 
 import pandas as pd
 df = pd.read_csv('StressLevelDataset.csv')
-df = df.drop_duplicates()
-
 df.head()
 
 
 y = df[['stress_level']]
-x = df[['self_esteem', 'sleep_quality', 'depression', 'anxiety_level', 'headache']]
+x = df[['self_esteem', 'sleep_quality', 'depression']]
 
 # x = df[['anxiety_level', 'self_esteem', 'depression', 'headache', 'blood_pressure', 'sleep_quality', 'breathing_problem', 'noise_level', 'living_conditions', 'safety', 'basic_needs', 'academic_performance', 'study_load', 'teacher_student_relationship', 'future_career_concerns', 'social_support', 'peer_pressure', 'extracurricular_activities', 'bullying']]
 
 
-y = y-1 # Normalizar el estres de -1 a 1
+y = y/2 # Normalizar el estres de -1 a 1
 
-def normalize_data(data):
-    min_val = data.min()
-    max_val = data.max()
-    normalized = (((data - min_val) / (max_val - min_val)) * 5)
-    return normalized
-
-x = normalize_data(x)
-
-print('x: ', x)
 
 import numpy as np
 
-Xtrain = np.array(x[:-100])
-Xtest = np.array(x[-100:])
+
+def normalize_data(data):
+    # Calcular min y max para cada columna
+    min_vals = np.min(data, axis=0)
+    max_vals = np.max(data, axis=0)
+    
+    # Evitar división por cero y agregar pequeño epsilon
+    range_vals = max_vals - min_vals
+    epsilon = 1e-8
+    range_vals = np.where(range_vals < epsilon, epsilon, range_vals)
+    
+    # Normalizar a rango [-0.9, 0.9] para evitar saturación
+    normalized = -0.9 + 1.8 * (data - min_vals) / range_vals
+    return normalized
+
+x_normalized = normalize_data(np.array(x))
+
+
+# Xtrain = np.array(x[:-100])
+# Xtest = np.array(x[-100:])
+
+Xtrain = x_normalized[:-100]
+Xtest = x_normalized[-100:]
 
 Ytrain = np.array(y[:-100])
 Ytest = np.array(y[-100:])
@@ -336,7 +366,7 @@ sys.setrecursionlimit(100000) # Aumentar el límete de recursión para evitar er
 
 
 
-stress_predictor = NN(5, [8, 4, 1], ['ReLU', 'ReLU', 'TanH'])
+stress_predictor = NN(3, [12, 8, 4, 1], 'RelU')
 # stress_predictor(X_test_list[7])
 
 
@@ -345,7 +375,7 @@ stress_predictor = NN(5, [8, 4, 1], ['ReLU', 'ReLU', 'TanH'])
 
 print('\n\n\nIniciando entrenamiento real sobre el dataset de estrés hasta 200 iteraciones, puede tomar un tiempo... \n')
 
-train(stress_predictor, X_train_list, Y_train_list, epochs=400, learning_rate=0.01, printability=20) # Printability es cada cuantas iteraciones se imprime el error actual.
+train(stress_predictor, X_train_list, Y_train_list, epochs=200, learning_rate=0.001, printability=10) # Printability es cada cuantas iteraciones se imprime el error actual.
 
 
 import matplotlib.pyplot as plt
@@ -435,138 +465,3 @@ mse_train = np.mean((y_true - y_pred_train)**2)
 mse_test = np.mean((y_true_test - y_pred_test)**2)
 print(f"Error cuadrático medio (entrenamiento): {mse_train:.4f}")
 print(f"Error cuadrático medio (prueba): {mse_test:.4f}")
-
-
-
-
-
-
-def convert_predictions(predictions):
-    result = []
-    for pred in predictions:
-        if pred < -0.5:
-            result.append(-1)
-        elif pred > 0.5:
-            result.append(1)
-        else:
-            result.append(0)
-    return np.array(result)
-
-
-
-
-
-
-# Obtener resultados de train
-
-y_pred_train = []
-for x in X_train_list:
-    pred = stress_predictor(x)
-    # Convertir Node a valor float
-    if isinstance(pred, list):
-        y_pred_train.append([p.data for p in pred])
-    else:
-        y_pred_train.append(pred.data)
-
-# Convertir predicciones y valores reales a arrays numpy
-y_pred_train = convert_predictions(y_pred_train)
-y_true = np.array([yt[0] for yt in Y_train_list])  # Extraer valores de las listas
-
-
-# Crear índices ordenados basados en los valores reales
-indices_ordenados = np.argsort(y_true)
-
-# Reordenar tanto los valores reales como las predicciones
-y_true_ordenado = y_true[indices_ordenados]
-y_pred_train_ordenado = y_pred_train[indices_ordenados]
-
-
-
-
-
-
-
-
-y_pred_test = []
-for x in X_test_list:
-    pred = stress_predictor(x)
-    # Convertir Node a valor float
-    if isinstance(pred, list):
-        y_pred_test.append([p.data for p in pred])
-    else:
-        y_pred_test.append(pred.data)
-
-
-# Convertir predicciones y valores reales a arrays numpy
-y_pred_test = convert_predictions(y_pred_test)
-
-y_true_test = np.array([yt[0] for yt in Y_test_list])  # Extraer valores de las listas
-
-# Crear índices ordenados basados en los valores reales
-indices_ordenados = np.argsort(y_true_test)
-
-# Reordenar tanto los valores reales como las predicciones
-y_true__test_ordenado = y_true_test[indices_ordenados]
-y_pred_test_ordenado = y_pred_test[indices_ordenados]
-
-
-
-
-# Crear una figura con dos subplots
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 6))
-
-# Primera gráfica (datos de entrenamiento)
-ax1.scatter(range(len(y_true_ordenado)), y_true_ordenado, c='blue', label='Valor Real', alpha=0.5)
-ax1.scatter(range(len(y_pred_train_ordenado)), y_pred_train_ordenado, c='red', label='Predicción', alpha=0.5)
-ax1.set_xlabel('Índice de Muestra')
-ax1.set_ylabel('Nivel de Estrés')
-ax1.set_title('Comparación con datos de entrenamiento')
-ax1.legend()
-ax1.grid(True, alpha=0.3)
-
-# Segunda gráfica (datos de prueba)
-ax2.scatter(range(len(y_true__test_ordenado)), y_true__test_ordenado, c='blue', label='Valor Real', alpha=0.5)
-ax2.scatter(range(len(y_pred_test_ordenado)), y_pred_test_ordenado, c='red', label='Predicción', alpha=0.5)
-ax2.set_xlabel('Índice de Muestra')
-ax2.set_ylabel('Nivel de Estrés')
-ax2.set_title('Comparación con datos de prueba')
-ax2.legend()
-ax2.grid(True, alpha=0.3)
-
-# Ajustar el espacio entre subplots
-plt.tight_layout()
-
-# Mostrar la figura
-plt.show()
-
-# Imprimir métricas de error
-mse_train = np.mean((y_true - y_pred_train)**2)
-mse_test = np.mean((y_true_test - y_pred_test)**2)
-print(f"Error cuadrático medio (entrenamiento): {mse_train:.4f}")
-print(f"Error cuadrático medio (prueba): {mse_test:.4f}")
-
-
-
-
-y_pred_train_classes = convert_predictions(y_pred_train)
-y_pred_test_classes = convert_predictions(y_pred_test)
-
-# Calcular accuracy
-train_accuracy = np.mean(y_pred_train_classes == y_true)
-test_accuracy = np.mean(y_pred_test_classes == y_true_test)
-
-print(f"Accuracy en entrenamiento: {train_accuracy:.4f}")
-print(f"Accuracy en prueba: {test_accuracy:.4f}")
-
-# Mostrar matriz de confusión
-from sklearn.metrics import confusion_matrix
-import seaborn as sns
-
-# Matriz de confusión para datos de prueba
-cm = confusion_matrix(y_true_test, y_pred_test_classes)
-plt.figure(figsize=(8, 6))
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
-plt.title('Matriz de Confusión (Datos de Prueba)')
-plt.ylabel('Valor Real')
-plt.xlabel('Predicción')
-plt.show()
