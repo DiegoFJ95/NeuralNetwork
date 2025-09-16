@@ -56,7 +56,7 @@ class Node:
     def RelU(self):
         x = self.data
         r = max(0, x)
-        out = Node(r, (self, ), 'RelU')
+        out = Node(r, (self, ), 'ReLU')
         return out
     
 
@@ -109,9 +109,10 @@ class Node:
 # Clase para una neurona de la red neuronal. Usa nodos para representar las operaciones matemáticas que describen la neurona (pesos, bias, suma ponderada, función de activación).
 
 class Neuron:
-    def __init__(self, inputs):
+    def __init__(self, inputs, activation='TanH'):
         # Lista de pesos (uno por cada entrada)
         self.w = []
+        self.activation = activation
         for _ in range(inputs):
             self.w.append(Node(random.uniform(-1, 1)))
         # Bias
@@ -138,7 +139,12 @@ class Neuron:
             activation = wi * xi
             total = total + activation
         # Normaliza la activación de la neurona
-        output = total.tanh()
+        if self.activation == 'TanH':
+            output = total.tanh()
+        elif self.activation == 'ReLU':
+            output = total.RelU()
+        else:
+            output = total
 
         # out = activation.tanh()
         return output
@@ -148,11 +154,11 @@ class Neuron:
 # Clase para una capa de la red neuronal compuesta de varias neuronas. Está completamente conectada a la capa anterior.
 
 class Layer:
-    def __init__(self, inputs, outputs):
+    def __init__(self, inputs, outputs, activation):
         # Crea una lista de neuronas correspondiendo con el número de salidas de esa capa. Cada neurona está conectada a todas las entradas.
         self.neurons = []
         for _ in range(outputs):
-            self.neurons.append(Neuron(inputs))
+            self.neurons.append(Neuron(inputs, activation=activation))
     
     # Al llamar la capa con una lista de entradas regresa la salida de cada neurona.
     def __call__(self, x):
@@ -175,14 +181,14 @@ class Layer:
 # Clase para una red neuronal densa. 
 
 class NN:
-    def __init__(self, inputs, layers):
+    def __init__(self, inputs, layers, activations):
         # Crear una lista con el número de valores por capa incluyendo la entrada para poder crear las capas con el número de entradas y de neuronas correcto. 
         inout = [inputs] + layers 
         self.layers = []
 
         # Crea capas que tienen el número de entradas = al número de salidas de la capa anterior.
         for i in range(len(layers)):
-            self.layers.append(Layer(inout[i], inout[i+1]))
+            self.layers.append(Layer(inout[i], inout[i+1], activations[i]))
     
     # Al llamar la red neuronal con una lista de entradas regresa la salida de la última capa. Se llama de forma iterativa para ir actualizando los valores desde la primera capa.
     def __call__(self, x):
@@ -203,7 +209,7 @@ class NN:
 
 
 # Red neuronal con 3 entradas, 2 capas de 4 neuronas y 1 neurona de salida.
-n = NN(3, [4,4,1])
+n = NN(3, [4,4,1], ['TanH', 'TanH', 'TanH'])
 
 # Entradas de ejemplo
 xs = [[2.0, 3.0, -1.0],

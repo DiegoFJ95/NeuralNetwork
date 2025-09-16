@@ -1,10 +1,12 @@
 ﻿# NeuralNetwork
 
-Correr NeuralNetwork.py
+Correr NeuralNetwork.py para el modelo sin framework y framework.py para el modelo con framework
 
-Por defecto el modelo predice el nivel de estrés según los datos de la autoestima, la calidad de sueño, y la depresión.
+Puedes encontrar el [reporte detallado aquí.](https://drive.google.com/file/d/1C_z7pexeze1pXaJ9Iq-cBmDfxiYWDCf7/view?usp=sharing)
 
-Se uso este [dataset](https://www.kaggle.com/datasets/mdsultanulislamovi/student-stress-monitoring-datasets/data)
+Por defecto el modelo predice el nivel de estrés según los datos de la autoestima, la calidad de sueño, la depresión, el nivel de ansiedad, y la frecuencia de dolor de cabeza.
+
+Se usé este [dataset](https://www.kaggle.com/datasets/mdsultanulislamovi/student-stress-monitoring-datasets/data)
 
 
 ### Características del modelo:
@@ -13,9 +15,9 @@ El modelo se entrena durante 200 generaciones con un learning rate de 0.01 y sue
 
 Al principio entrena un modelo pequeño para verificar que la red neuronal esté bien programada, debe dar como resultados 1, -1, -1, y 1.
 
-Usa TanH como función de activación. Está implementado el código para que el fordward y backward pass funcione con RelU pero me falta programar la funcionalidad para poder elegir la función de activación.
+Usa TanH como función de activación final y ReLU en las capas ocultas.
 
-Usa el mean squared error como función de pérdida. Por el momento solo funciona como modelo de regresión, pero en un futuro lo adaptaré apra que funcione como modelo de clasificación.
+Usa el mean squared error como función de pérdida. 
 
 ### Consideración especial:
 
